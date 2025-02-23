@@ -124,37 +124,51 @@
         let jogoFinalizado = false;
 
         async function iniciarJogo() {
-            try {
-                // Carregar palavras do GitHub
-                const response = await fetch('https://raw.githubusercontent.com/seu-usuario/seu-repo/main/palavras.json');
-                const todasPalavras = await response.json();
-                
-                // Filtrar e processar palavras
-                palavrasValidas = todasPalavras
-                    .filter(palavra => palavra.length === 5)
-                    .map(palavra => 
-                        palavra.normalize("NFD")
-                            .replace(/[\u0300-\u036f]/g, "")
-                            .toUpperCase()
-                    );
-                
-                palavrasValidas = [...new Set(palavrasValidas)];
-                
-                if(palavrasValidas.length === 0) throw new Error('Nenhuma palavra válida encontrada');
-                
-                // Selecionar palavra secreta
-                palavraSecreta = palavrasValidas[Math.floor(Math.random() * palavrasValidas.length)];
-                
-                // Inicializar interface
-                inicializarGrid();
-                inicializarTeclado();
-                document.querySelector('.loading').remove();
-                
-            } catch (erro) {
-                document.querySelector('.loading').textContent = 'Erro: ' + erro.message;
-            }
+    try {
+        const response = await fetch('https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/palavras.json');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
-
+        
+        const rawData = await response.text();
+        console.log('Dados brutos:', rawData); // Verifique no console
+        
+        // Limpeza de caracteres inválidos
+        const cleanedData = rawData
+            .replace(/^\xEF\xBB\xBF/, '') // Remove BOM
+            .replace(/(,\s*)?]$/, ']'); // Corrige vírgulas finais
+        
+        const todasPalavras = JSON.parse(cleanedData);
+        
+        // Processamento das palavras
+        palavrasValidas = todasPalavras
+            .filter(palavra => palavra?.length === 5) // Verificação segura
+            .map(palavra => 
+                typeof palavra === 'string' 
+                    ? palavra.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase()
+                    : ''
+            )
+            .filter(palavra => palavra.length === 5);
+        
+        palavrasValidas = [...new Set(palavrasValidas)];
+        
+        if (palavrasValidas.length === 0) {
+            throw new Error('Nenhuma palavra válida encontrada após processamento');
+        }
+        
+        palavraSecreta = palavrasValidas[Math.floor(Math.random() * palavrasValidas.length)];
+        console.log('Palavra secreta:', palavraSecreta); // Debug
+        
+        inicializarGrid();
+        inicializarTeclado();
+        document.querySelector('.loading').remove();
+        
+    } catch (erro) {
+        console.error('Erro crítico:', erro);
+        document.querySelector('.loading').textContent = `Falha ao carregar: ${erro.message}`;
+    }
+}
         function inicializarGrid() {
             const grid = document.getElementById('grid');
             for(let i = 0; i < 6; i++) {
