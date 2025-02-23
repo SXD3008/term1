@@ -51,10 +51,200 @@
 </head>
 <body>
     <!-- ... (mantenha todo o HTML anterior) ... -->
-
+    <div class="loading">Carregando palavras...</div>
+    <header>TERMO</header>
+    <div class="grid" id="grid"></div>
+    <div class="message" id="message"></div>
+    <div class="keyboard" id="keyboard"></div>
     <script>
         // ... (mantenha todas as variáveis e funções anteriores) ...
+     let palavrasValidas = [];
+        let palavraSecreta = '';
+        let tentativaAtual = 0;
+        let celulaAtual = 0;
+        let jogoFinalizado = false;
 
+        async function iniciarJogo() {
+            try {
+                const response = await fetch('https://raw.githubusercontent.com/SXD3008/term1/main/palavras.json');
+                
+                if (!response.ok) {
+                    throw new Error(`Erro HTTP! status: ${response.status}`);
+                }
+                
+                const rawData = await response.text();
+                const cleanedData = rawData
+                    .replace(/^\xEF\xBB\xBF/, '')
+                    .replace(/(,\s*)?]$/, ']');
+                
+                const todasPalavras = JSON.parse(cleanedData);
+                
+                palavrasValidas = todasPalavras
+                    .filter(palavra => palavra?.length === 5)
+                    .map(palavra => 
+                        typeof palavra === 'string' 
+                            ? palavra.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase()
+                            : ''
+                    )
+                    .filter(palavra => palavra.length === 5);
+                
+                palavrasValidas = [...new Set(palavrasValidas)];
+                
+                if (palavrasValidas.length === 0) {
+                    throw new Error('Nenhuma palavra válida encontrada');
+                }
+                
+                palavraSecreta = palavrasValidas[Math.floor(Math.random() * palavrasValidas.length)];
+                inicializarGrid();
+                inicializarTeclado();
+                document.querySelector('.loading').remove();
+                
+            } catch (erro) {
+                console.error('Erro:', erro);
+                document.querySelector('.loading').textContent = `Erro: ${erro.message}`;
+            }
+        }
+
+        function inicializarGrid() {
+            const grid = document.getElementById('grid');
+            for(let i = 0; i < 6; i++) {
+                const row = document.createElement('div');
+                row.className = 'row';
+                for(let j = 0; j < 5; j++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    row.appendChild(cell);
+                }
+                grid.appendChild(row);
+            }
+        }
+
+        function inicializarTeclado() {
+            const teclado = [
+                ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+                ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
+                ["↵", "Z", "X", "C", "V", "B", "N", "M", "←"]
+            ];
+
+            const keyboardDiv = document.getElementById('keyboard');
+            teclado.forEach(linha => {
+                const divLinha = document.createElement('div');
+                divLinha.className = 'keyboard-row';
+                
+                linha.forEach(tecla => {
+                    const botao = document.createElement('button');
+                    botao.className = 'key';
+                    botao.textContent = tecla;
+                    botao.addEventListener('click', () => manipularInput(tecla));
+                    divLinha.appendChild(botao);
+                });
+                
+                keyboardDiv.appendChild(divLinha);
+            });
+        }
+
+        function manipularInput(tecla) {
+            if(jogoFinalizado) return;
+            
+            const linhaAtual = document.querySelectorAll('.row')[tentativaAtual];
+            
+            if(tecla === '←') {
+                if(celulaAtual > 0) {
+                    celulaAtual--;
+                    linhaAtual.children[celulaAtual].textContent = '';
+                }
+            }
+            else if(tecla === '↵') {
+                if(celulaAtual === 5) verificarPalpite();
+            }
+            else if(celulaAtual < 5) {
+                linhaAtual.children[celulaAtual].textContent = tecla;
+                celulaAtual++;
+            }
+        }
+
+        function verificarPalpite() {
+            const linhaAtual = document.querySelectorAll('.row')[tentativaAtual];
+            const palpite = Array.from(linhaAtual.children)
+                .map(cell => cell.textContent)
+                .join('')
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .toUpperCase();
+
+            if(!palavrasValidas.includes(palpite)) {
+                mostrarMensagem('Palavra inválida!');
+                return;
+            }
+
+            Array.from(linhaAtual.children).forEach((cell, i) => {
+                setTimeout(() => cell.classList.add('flip'), i * 200);
+            });
+
+            const letras = palavraSecreta.split('');
+            const estadoLetras = [];
+            
+            Array.from(linhaAtual.children).forEach((cell, i) => {
+                if(cell.textContent === letras[i]) {
+                    estadoLetras[i] = 'correct';
+                    letras[i] = null;
+                }
+            });
+
+            Array.from(linhaAtual.children).forEach((cell, i) => {
+                if(!estadoLetras[i]) {
+                    const index = letras.indexOf(cell.textContent);
+                    if(index !== -1) {
+                        estadoLetras[i] = 'present';
+                        letras[index] = null;
+                    } else {
+                        estadoLetras[i] = 'absent';
+                    }
+                }
+            });
+
+            setTimeout(() => {
+                Array.from(linhaAtual.children).forEach((cell, i) => {
+                    const corVar = {
+                        'correct': 'verde',
+                        'present': 'amarelo',
+                        'absent': 'cinza'
+                    }[estadoLetras[i]];
+
+                    cell.style.backgroundColor = `var(--${corVar})`;
+                    cell.style.borderColor = `var(--${corVar})`;
+                    cell.style.color = 'white';
+                });
+
+                if(palpite === palavraSecreta) {
+                    mostrarMensagem('Parabéns! 🎉', true);
+                    jogoFinalizado = true;
+                }
+                else if(tentativaAtual === 5) {
+                    mostrarMensagem(`A palavra era: ${palavraSecreta}`, true);
+                    jogoFinalizado = true;
+                }
+                else {
+                    tentativaAtual++;
+                    celulaAtual = 0;
+                }
+            }, 1500);
+        }
+
+        function mostrarMensagem(texto, isSuccess = false) {
+            const msgDiv = document.getElementById('message');
+            msgDiv.textContent = texto;
+            msgDiv.style.display = 'block';
+            setTimeout(() => msgDiv.style.display = 'none', 2000);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if(e.key === 'Enter') manipularInput('↵');
+            else if(e.key === 'Backspace') manipularInput('←');
+            else if(e.key.match(/^[a-zA-z]$/)) manipularInput(e.key.toUpperCase());
+        });
+
+        iniciarJogo();
         function manipularInput(tecla) {
             if(jogoFinalizado) return;
             
